@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+  <head>
+      <title>a simple DNS trace tool</title>
+      <meta name="title" content="a simple DNS trace tool">
+      <meta name="description" content="see how DNS queries get resolved behind the scenes">
+      <meta property="og:type" content="website">
+      <meta property="og:url" content="https://dns-lookup.jvns.ca">
+      <meta property="og:title" content="a simple DNS trace tool">
+      <meta property="og:description" content="see how DNS queries get resolved behind the scenes">
+      <meta property="twitter:url" content="https://dns-lookup.jvns.ca">
+      <meta property="twitter:title" content="a simple DNS trace tool">
+      <meta property="twitter:description" content="see how DNS queries get resolved behind the scenes">
+      <meta charset="utf-8">
+      <meta name="viewport" content="initial-scale=1, maximum-scale=1">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.0.3/tailwind.min.css">
+      <link href='https://fonts.googleapis.com/css?family=Roboto:400,500,700,400italic,500italic,300,300italic,100' rel='stylesheet' type='text/css'>
+      <script defer data-domain="dns-lookup.jvns.ca" src="https://plausible.io/js/script.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+      <script src="/trace.js"> </script>
+  </head>
+  <body>
+<style>
+input[type=button]:focus {
+    box-shadow: 0px 0px 2px purple;
+
+}
+input[type=button] {
+    font-family: "Roboto","Helvetica","Arial",sans-serif;
+}
+input:checked + label {
+    color: white;
+	user-select: none;
+    background-color: rgba(139,92,246);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+}
+input:checked + label:hover {
+    background-color: rgba(139,92,246);
+    color: white;
+}
+
+</style>
+
+<nav class="bg-purple-800 text-white w-full p-4 text-lg flex flex-row">
+    <div class="w-1/2 sm:pl-8">
+        a simple DNS trace tool
+    </div>
+    <div class="w-1/2 text-right">
+        <a href="https://github.com/jvns/dns-lookup">GitHub repository</a>
+    </div>
+</nav>
+<div class="container max-w-screen-lg m-auto p-2">
+<div class="my-8 m-auto w-full bg-gray-100 p-8 pt-12 shadow-md">
+    <form onsubmit="formSubmit(event)">
+    <div>
+        <div class="relative">
+            <input name="domain" 
+                   type="text" 
+                   id="domain" 
+                   placeholder="yourdomain.com"
+                   class="focus:outline-none bg-transparent w-full  focus:border-purple-500 border-solid border-b-2 transition duration-500">
+            <label for="domain" class="text-sm text-purple-800 absolute left-0 -top-6">
+                Name
+            </label>
+        </div>
+    </div>
+    <div class="mt-8">
+        <div class="text-center mt-4">
+        <input id="trace" name="type" value="Trace"  type="radio" onclick="buttonHandler()" class="hidden" checked>
+        <label for="trace"   class="bg-transparent font-medium text-sm hover:bg-gray-200 p-2 px-4 mx-1">Trace</label>
+        </div>
+    </div>
+    </form>
+
+</div>
+
+<style> 
+ul + ul {
+    border-top: 1px solid #bbb;
+}
+</style>
+<script type="text/x-template" id="recordlist">
+<div>
+<table id="answers" class="pl-4 w-full sm:block hidden">
+    <tr class="border-b border-gray-300">
+        <td class="px-4" >name</td>
+        <td class="px-4" >TTL</td>
+        <td class="px-4 whitespace-nowrap" >record type</td>
+        <td class="px-4" >value</td>
+    </tr>
+    <tr v-for="answer in records" class="py-4 font-mono">
+        <td style="white-space: nowrap" class="align-top py-1 px-4">{{answer.name}}</td>
+        <td class="align-top py-1 px-4">{{answer.ttl}}</td>
+        <td class="align-top py-1 px-4 w-24">{{answer.type}}</td>
+        <td class="align-top py-1 px-4 w-full" style="word-break: break-word;">{{answer.value}} </td>
+    </tr>
+</table>
+<!-- show a list on small screens -->
+<ul v-for="answer in records" class="pl-4 py-4 font-mono sm:hidden block">
+    <li><span class="text-purple-600 font-semibold">Name:</span> {{answer.name}}</li>
+    <li><span class="text-purple-600 font-semibold">TTL:</span> {{answer.ttl}}</li>
+    <li><span class="text-purple-600 font-semibold">Record Type:</span> {{answer.type}}</li>
+    <li style="word-break: break-word;"><span class="text-purple-600 font-semibold">Value:</span> {{answer.value}} </li>
+</ul>
+</div>
+</script>
+<script type="text/x-template" id="trace-step">
+<div v-if="ns" class="relative my-8 m-auto w-full bg-gray-100 p-8 pt-12 shadow-md">
+        <span class="absolute rounded left-2 -top-4 shadow-sm p-2 inline-block bg-purple-500 text-white">{{title}}</span>
+    <div>
+        <h2 class="font-bold text-xl mb-4">Request:</h2>
+        <div class="w-full pl-4 pb-4 font-mono">
+        <span class="text-purple-600 font-semibold">To: </span>{{ns}}<br>
+        <span class="text-purple-600 font-semibold">Record type: </span>A<br>
+        <span class="text-purple-600 font-semibold">Domain: </span>{{domain}}
+        </div>
+
+        <div v-if="records" class="w-full">
+            <h2 class="font-bold text-xl mb-4 py-4">Response</h2>
+                <div class="bg-purple-100 relative pt-8 p-4 shadow-md">
+                    <h3 class="inline absolute rounded left-2 -top-4 shadow-sm p-2 inline-block bg-white font-bold shadow-sm">Answer section</h3>
+                    <div v-if="records.answer.length > 0">
+                        <recordlist v-bind:records="records.answer"></recordlist>
+                    </div>
+                    <div v-else class="py-2">
+                    It's empty! This means "I don't have any <code class="font-mono">A</code> records for {{domain}}".
+                    </div>
+                </div>
+                <!-- todo: does it really make sense to not display the authority section if there's an answer? not sure. -->
+                <div v-if="records.authority.length > 0 && records.answer.length == 0" class="bg-purple-100 relative pt-8 p-4 mt-8 shadow-md">
+                    <h3 class="inline absolute rounded left-2 -top-4 shadow-sm p-2 inline-block bg-white font-bold shadow-sm">Authority section</h3>
+
+                    <div class="py-2">
+                    This means "Ask one of these other servers instead of me".
+                    </div>
+                    <recordlist v-bind:records="records.authority"></recordlist>
+                </div>
+                <!-- todo: does it really make sense to not display the authority section if there's an answer? not sure. -->
+                <div v-if="records.additional.length > 0 && records.answer.length == 0" class="bg-purple-100 relative pt-8 p-4 mt-8 shadow-md">
+                    <h3 class="inline absolute rounded left-2 -top-4 shadow-sm p-2 inline-block bg-white font-bold shadow-sm">Additional section</h3>
+
+                    <div class="py-2">
+                    This is a list of "additional" records. They're usually IP addresses of the DNS servers in the Authority section. This helps save time looking up those records.
+                    </div>
+                    <recordlist v-bind:records="records.additional"></recordlist>
+                </div>
+
+
+
+        </div>
+    </div>
+</div>
+</script>
+
+<div id="app">
+    <div class="my-4">
+    Ever wondered what exactly is going on behind the scenes when you make a
+    DNS query? This tool shows you how it works! This is what recursive DNS servers like <code>8.8.8.8</code> or <code>1.1.1.1</code> do when they don't have a result in their cache.
+    </div>
+
+    <div v-if="rootServers" class="relative my-8 m-auto w-full bg-gray-100 p-8 pt-12 shadow-md">
+        <span class="absolute rounded left-2 -top-4 shadow-sm p-2 inline-block bg-purple-500 text-white">Step 0: Choose a root nameserver</span>
+        <div>
+            <p class="my-2">
+            There are 13 root nameservers (this list comes from <a class="underline text-purple-500" href="https://www.iana.org/domains/root/servers">here</a>):
+            </p>
+            <p class="font-mono pl-4 my-2">
+             {{rootServers.join(", ")}} 
+            </p>
+            <p class="mt-4 mt-6">
+            Let's pick one at random: <span class="font-mono text-purple-500">{{rootNS}}</span>
+            </p>
+        </div>
+    </div>
+
+    <tracestep title="Step 1: Ask root nameserver" 
+         v-bind:ns="rootNS"
+         v-bind:domain="domain"
+         v-bind:records="rootResponses"> </tracestep>
+    <tracestep title="Step 2: Ask TLD nameserver"
+         v-bind:ns="tldNS"
+         v-bind:domain="domain"
+         v-bind:records="tldResponses"> </tracestep>
+    <tracestep title="Step 3: Ask authoritative nameserver" 
+         v-bind:ns="authNS"
+         v-bind:domain="domain"
+         v-bind:records="authResponses"> </tracestep>
+<div class="text-sm w-full m-auto mt-64">
+    <p class="pb-2">
+    FAQ:
+    </p>
+
+    <p class="font-bold">How can I get the same information from a command line tool?</p>
+    <p class="pl-2 mb-4">
+    Use <code> dig +trace yourdomain.com</code>
+    </p>
+
+
+    <p class="font-bold">Where are the DNS queries being made?</p>
+    <p class="pl-2 mb-4">
+    It's a combination of
+    <a class="text-purple-500" href="https://github.com/jvns/dns-lookup/blob/master/dns.go">this little Go program</a>
+    and <a class="text-purple-500" href="https://github.com/jvns/dns-lookup/blob/master/site/trace.js">this Javascript code</a>
+    </p>
+
+</div>
+</div>
+
+  </body>
+</html>
